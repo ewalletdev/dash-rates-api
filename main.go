@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"github.com/parnurzeal/gorequest"
@@ -8,7 +9,6 @@ import (
 	"github.com/tidwall/gjson"
 	"html/template"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -23,7 +23,12 @@ var cacheDuration = time.Minute
 func main() {
 	e := echo.New()
 
-	e.Use(middleware.Logger())
+	loggerConfig := middleware.DefaultLoggerConfig
+	loggerConfig.Skipper = func(c echo.Context) bool {
+		return c.Path() == "/"
+	}
+
+	e.Use(middleware.LoggerWithConfig(loggerConfig))
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
 
@@ -38,24 +43,24 @@ func main() {
 	e.GET("/avg", routes.Average)
 	e.GET("/poloniex", routes.Poloniex)
 	e.GET("/btcaverage", routes.BTCAverage)
-	e.GET("/invoice", routes.Invoice)
+	e.GET("/invoice", routes.InvoiceViaCointext)
 	e.GET("/*", routes.Wildcard)
 	e.Renderer = routes
 
-	go func() {
-		_, _ = providers.BitcoinaverageRates()
-		time.Sleep(cacheDuration)
-	}()
-
-	go func() {
-		_, _ = providers.CryptocompareBTCDASHAverage()
-		time.Sleep(cacheDuration)
-	}()
-
-	go func() {
-		_, _ = providers.DashCasaDASHVESRate()
-		time.Sleep(cacheDuration)
-	}()
+	// go func() {
+	// 	_, _ = providers.BitcoinaverageRates()
+	// 	time.Sleep(cacheDuration)
+	// }()
+	//
+	// go func() {
+	// 	_, _ = providers.CryptocompareBTCDASHAverage()
+	// 	time.Sleep(cacheDuration)
+	// }()
+	//
+	// go func() {
+	// 	_, _ = providers.DashCasaDASHVESRate()
+	// 	time.Sleep(cacheDuration)
+	// }()
 
 	e.Logger.Fatal(e.Start(":3000"))
 }
@@ -106,13 +111,16 @@ func (r *router) BTCAverage(c echo.Context) error {
 }
 
 // Creates a CoinText invoice.
-func (r *router) Invoice(c echo.Context) error {
-	address := c.QueryParam("address")
-	amount, err := strconv.ParseInt(c.QueryParam("amount"), 10, 0)
-	if err != nil {
+func (r *router) InvoiceViaCointext(c echo.Context) error {
+	address := c.QueryParam("addr")
+	amount, err := strconv.ParseInt(c.QueryParam("amount"), 10, 64)
+	if err != nil || amount == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "Amount param is invalid")
 	}
 
+	// TODO: Restore the CoinText api request when we have a key...
+
+	/*
 	url := "https://pos-api.cointext.io/create_invoice/"
 
 	_, body, errs := gorequest.New().Post(url).Send(map[string]interface{}{
@@ -133,8 +141,65 @@ func (r *router) Invoice(c echo.Context) error {
 		broadcastErr(err)
 		return err
 	}
+	*/
 
-	return c.JSON(http.StatusOK, paymentId)
+	url := "https://api.get-spark.com/invoice"
+
+	_, body, errs := gorequest.New().Get(url).Param("addr", address).Param("amount", fmt.Sprintf("%d", amount)).End()
+	if len(errs) > 1 {
+		broadcastErr(errs[0])
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create CoinText invoice")
+	}
+
+	// fmt.Printf("%s - New invoice to %s for %d", c.RealIP(), address, amount)
+
+	c.Logger().Printj(map[string]interface{}{
+		"message": "invoice",
+		"remote_ip": c.RealIP(),
+		"address": address,
+		"amount": amount,
+	})
+
+	rsp := strings.Replace(body, `"`, "", -1)
+
+	return c.JSON(http.StatusOK, rsp)
+}
+
+func (r *router) InvoiceViaCoinTigo(c echo.Context) error {
+	url := "https://ctgoapi.ngrok.io/cointigo"
+
+	address := c.QueryParam("addr")
+	amount, err := strconv.ParseInt(c.QueryParam("amount"), 10, 64)
+	if err != nil || amount == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "Amount param is invalid")
+	}
+
+	_, body, errs := gorequest.New().Post(url).Send(map[string]interface{}{
+		"coin": "DASH",
+		"user": "rates.dashretail.org",
+		"method": "create_invoice",
+		"address": address,
+		"amount": amount,
+	}).End()
+
+
+	if len(errs) > 1 {
+		broadcastErr(errs[0])
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create CoinText invoice")
+	}
+
+	// fmt.Printf("%s - New invoice to %s for %d", c.RealIP(), address, amount)
+
+	c.Logger().Printj(map[string]interface{}{
+		"message": "invoice",
+		"remote_ip": c.RealIP(),
+		"address": address,
+		"amount": amount,
+	})
+
+	rsp := strings.Replace(body, `"`, "", -1)
+
+	return c.JSON(http.StatusOK, rsp)
 }
 
 // The BTC rates from BitcoinAverage converted into DASH rates.
@@ -207,6 +272,12 @@ func (r *router) Wildcard(c echo.Context) error {
 		}
 	}
 
+	c.Logger().Printj(map[string]interface{}{
+		"message": "rates",
+		"remote_ip": c.RealIP(),
+		"rates": rates,
+	})
+
 	return c.JSON(http.StatusOK, rates)
 }
 
@@ -218,7 +289,7 @@ func (p *providers) CryptocompareBTCDASHAverage() (rate float64, err error) {
 	url := "https://min-api.cryptocompare.com/data/generateAvg?fsym=DASH&tsym=BTC&e=Binance,Kraken,Poloniex,Bitfinex"
 	rateI, found := p.cache.Get(url)
 	if !found {
-		log.Println("Recaching CryptocompareBTCDASHAverage")
+		fmt.Println("Recaching CryptocompareBTCDASHAverage")
 		_, body, errs := gorequest.New().Get(url).End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
@@ -237,7 +308,7 @@ func (p *providers) PoloniexBTCDASHAverage() (rate float64, err error) {
 	url := "https://poloniex.com/public?command=returnTradeHistory&currencyPair=BTC_DASH"
 	rateI, found := p.cache.Get(url)
 	if !found {
-		log.Println("Recaching PoloniexBTCDASHAverage")
+		fmt.Println("Recaching PoloniexBTCDASHAverage")
 		_, body, errs := gorequest.New().Get(url).End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
@@ -263,7 +334,7 @@ func (p *providers) BitcoinaverageCurrentBTCDASHRate() (rate float64, err error)
 	url := "https://apiv2.bitcoinaverage.com/indices/crypto/ticker/DASHBTC"
 	rateI, found := p.cache.Get(url)
 	if !found {
-		log.Println("Recaching BitcoinaverageCurrentBTCDASHRate")
+		fmt.Println("Recaching BitcoinaverageCurrentBTCDASHRate")
 		_, body, errs := gorequest.New().Get(url).End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
@@ -282,7 +353,7 @@ func (p *providers) DashCasaDASHVESRate() (rate float64, err error) {
 	url := "http://dash.casa/api/?cur=VES"
 	rateI, found := p.cache.Get(url)
 	if !found {
-		log.Println("Recaching DashCasaDASHVESRate")
+		fmt.Println("Recaching DashCasaDASHVESRate")
 		_, body, errs := gorequest.New().Get(url).End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
@@ -301,7 +372,7 @@ func (p *providers) BitcoinaverageRates() (rates map[string]float64, err error) 
 	url := "https://apiv2.bitcoinaverage.com/indices/global/ticker/short?crypto=BTC"
 	ratesI, found := p.cache.Get(url)
 	if !found {
-		log.Println("Recaching BitcoinaverageRates")
+		fmt.Println("Recaching BitcoinaverageRates")
 		rates = make(map[string]float64)
 		_, body, errs := gorequest.New().Get(url).End()
 		if len(errs) > 1 {
@@ -319,6 +390,7 @@ func (p *providers) BitcoinaverageRates() (rates map[string]float64, err error) 
 	} else {
 		rates, _ = ratesI.(map[string]float64)
 	}
+
 	return
 }
 
