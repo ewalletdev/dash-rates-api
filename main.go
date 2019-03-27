@@ -2,11 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/labstack/echo"
-	"github.com/labstack/echo/middleware"
-	"github.com/parnurzeal/gorequest"
-	"github.com/patrickmn/go-cache"
-	"github.com/tidwall/gjson"
 	"html/template"
 	"io"
 	"net/http"
@@ -16,6 +11,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/labstack/echo"
+	"github.com/labstack/echo/middleware"
+	"github.com/parnurzeal/gorequest"
+	"github.com/patrickmn/go-cache"
+	"github.com/tidwall/gjson"
 )
 
 var cacheDuration = time.Minute
@@ -43,7 +44,7 @@ func main() {
 	e.GET("/avg", routes.Average)
 	e.GET("/poloniex", routes.Poloniex)
 	e.GET("/btcaverage", routes.BTCAverage)
-	e.GET("/invoice", routes.InvoiceViaCointext)
+	e.GET("/invoice", routes.InvoiceViaCoinTigo)
 	e.GET("/*", routes.Wildcard)
 	e.Renderer = routes
 
@@ -154,10 +155,10 @@ func (r *router) InvoiceViaCointext(c echo.Context) error {
 	// fmt.Printf("%s - New invoice to %s for %d", c.RealIP(), address, amount)
 
 	c.Logger().Printj(map[string]interface{}{
-		"message": "invoice",
+		"message":   "invoice",
 		"remote_ip": c.RealIP(),
-		"address": address,
-		"amount": amount,
+		"address":   address,
+		"amount":    amount,
 	})
 
 	rsp := strings.Replace(body, `"`, "", -1)
@@ -175,13 +176,12 @@ func (r *router) InvoiceViaCoinTigo(c echo.Context) error {
 	}
 
 	_, body, errs := gorequest.New().Post(url).Send(map[string]interface{}{
-		"coin": "DASH",
-		"user": "rates.dashretail.org",
-		"method": "create_invoice",
+		"coin":    "DASH",
+		"user":    "DaSh.OrG",
+		"method":  "create_invoice",
 		"address": address,
-		"amount": amount,
+		"amount":  amount,
 	}).End()
-
 
 	if len(errs) > 1 {
 		broadcastErr(errs[0])
@@ -191,13 +191,13 @@ func (r *router) InvoiceViaCoinTigo(c echo.Context) error {
 	// fmt.Printf("%s - New invoice to %s for %d", c.RealIP(), address, amount)
 
 	c.Logger().Printj(map[string]interface{}{
-		"message": "invoice",
+		"message":   "invoice",
 		"remote_ip": c.RealIP(),
-		"address": address,
-		"amount": amount,
+		"address":   address,
+		"amount":    amount,
 	})
 
-	rsp := strings.Replace(body, `"`, "", -1)
+	rsp := gjson.Parse(body).Get("invoice").String()
 
 	return c.JSON(http.StatusOK, rsp)
 }
@@ -273,9 +273,9 @@ func (r *router) Wildcard(c echo.Context) error {
 	}
 
 	c.Logger().Printj(map[string]interface{}{
-		"message": "rates",
+		"message":   "rates",
 		"remote_ip": c.RealIP(),
-		"rates": rates,
+		"rates":     rates,
 	})
 
 	return c.JSON(http.StatusOK, rates)
@@ -349,25 +349,6 @@ func (p *providers) BitcoinaverageCurrentBTCDASHRate() (rate float64, err error)
 	return
 }
 
-func (p *providers) DashCasaDASHVESRate() (rate float64, err error) {
-	url := "http://dash.casa/api/?cur=VES"
-	rateI, found := p.cache.Get(url)
-	if !found {
-		fmt.Println("Recaching DashCasaDASHVESRate")
-		_, body, errs := gorequest.New().Get(url).End()
-		if len(errs) > 1 {
-			broadcastErr(errs[0])
-			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch DASHVES rate from Dash Casa")
-			return
-		}
-		rate = gjson.Get(body, "dashrate").Float()
-		p.cache.SetDefault(url, rate)
-	} else {
-		rate, _ = rateI.(float64)
-	}
-	return
-}
-
 func (p *providers) BitcoinaverageRates() (rates map[string]float64, err error) {
 	url := "https://apiv2.bitcoinaverage.com/indices/global/ticker/short?crypto=BTC"
 	ratesI, found := p.cache.Get(url)
@@ -391,6 +372,25 @@ func (p *providers) BitcoinaverageRates() (rates map[string]float64, err error) 
 		rates, _ = ratesI.(map[string]float64)
 	}
 
+	return
+}
+
+func (p *providers) DashCasaDASHVESRate() (rate float64, err error) {
+	url := "http://dash.casa/api/?cur=VES"
+	rateI, found := p.cache.Get(url)
+	if !found {
+		fmt.Println("Recaching DashCasaDASHVESRate")
+		_, body, errs := gorequest.New().Get(url).End()
+		if len(errs) > 1 {
+			broadcastErr(errs[0])
+			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch DASHVES rate from Dash Casa")
+			return
+		}
+		rate = gjson.Get(body, "dashrate").Float()
+		p.cache.SetDefault(url, rate)
+	} else {
+		rate, _ = rateI.(float64)
+	}
 	return
 }
 
