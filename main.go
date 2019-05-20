@@ -290,10 +290,18 @@ func (p *providers) CryptocompareBTCDASHAverage() (rate float64, err error) {
 	rateI, found := p.cache.Get(url)
 	if !found {
 		fmt.Println("Recaching CryptocompareBTCDASHAverage")
-		_, body, errs := gorequest.New().Get(url).End()
+		rsp, body, errs := gorequest.New().
+			Get(url).
+			Retry(3, 5 * time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
+			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
 			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch BTCDASH rate from CryptoCompare")
+			return
+		}
+		if rsp.StatusCode != http.StatusOK {
+			err = echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("CryptoCompare returned bad status code: %d", rsp.StatusCode))
+			broadcastErr(err)
 			return
 		}
 		rate, err = strconv.ParseFloat(gjson.Get(body, "RAW.PRICE").String()[1:], 10)
@@ -309,10 +317,18 @@ func (p *providers) PoloniexBTCDASHAverage() (rate float64, err error) {
 	rateI, found := p.cache.Get(url)
 	if !found {
 		fmt.Println("Recaching PoloniexBTCDASHAverage")
-		_, body, errs := gorequest.New().Get(url).End()
+		rsp, body, errs := gorequest.New().
+			Get(url).
+			Retry(3, 5 * time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
+			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
 			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch BTCDASH average rate from Poloniex")
+			return
+		}
+		if rsp.StatusCode != http.StatusOK {
+			err = echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Poloniex returned bad status code: %d", rsp.StatusCode))
+			broadcastErr(err)
 			return
 		}
 		rateTotal := 0.0
@@ -335,10 +351,18 @@ func (p *providers) BitcoinaverageCurrentBTCDASHRate() (rate float64, err error)
 	rateI, found := p.cache.Get(url)
 	if !found {
 		fmt.Println("Recaching BitcoinaverageCurrentBTCDASHRate")
-		_, body, errs := gorequest.New().Get(url).End()
+		rsp, body, errs := gorequest.New().
+			Get(url).
+			Retry(3, 5 * time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
+			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
 			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch BTCDASH rate from BitcoinAverage")
+			return
+		}
+		if rsp.StatusCode != http.StatusOK {
+			err = echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("BitcoinAverage BTCDASH returned bad status code: %d", rsp.StatusCode))
+			broadcastErr(err)
 			return
 		}
 		rate = gjson.Get(body, "last").Float()
@@ -355,13 +379,20 @@ func (p *providers) BitcoinaverageRates() (rates map[string]float64, err error) 
 	if !found {
 		fmt.Println("Recaching BitcoinaverageRates")
 		rates = make(map[string]float64)
-		_, body, errs := gorequest.New().Get(url).End()
+		rsp, body, errs := gorequest.New().
+			Get(url).
+			Retry(3, 5 * time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
+			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
 			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch rates from BitcoinAverage")
 			return
 		}
-
+		if rsp.StatusCode != http.StatusOK {
+			err = echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("BitcoinAverage returned bad status code: %d", rsp.StatusCode))
+			broadcastErr(err)
+			return
+		}
 		gjson.Parse(body).ForEach(func(key, value gjson.Result) bool {
 			rates[key.String()[3:]] = value.Get("last").Float()
 			return true
@@ -380,10 +411,18 @@ func (p *providers) DashCasaDASHVESRate() (rate float64, err error) {
 	rateI, found := p.cache.Get(url)
 	if !found {
 		fmt.Println("Recaching DashCasaDASHVESRate")
-		_, body, errs := gorequest.New().Get(url).End()
+		rsp, body, errs := gorequest.New().
+			Get(url).
+			Retry(3, 5 * time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
+			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
 			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch DASHVES rate from Dash Casa")
+			return
+		}
+		if rsp.StatusCode != http.StatusOK {
+			err = echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Dash Casa returned bad status code: %d", rsp.StatusCode))
+			broadcastErr(err)
 			return
 		}
 		rate = gjson.Get(body, "dashrate").Float()
