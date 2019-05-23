@@ -19,7 +19,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-var cacheDuration = time.Minute
+var cacheDuration = time.Second * 90
 
 func main() {
 	e := echo.New()
@@ -122,26 +122,26 @@ func (r *router) InvoiceViaCointext(c echo.Context) error {
 	// TODO: Restore the CoinText api request when we have a key...
 
 	/*
-	url := "https://pos-api.cointext.io/create_invoice/"
+		url := "https://pos-api.cointext.io/create_invoice/"
 
-	_, body, errs := gorequest.New().Post(url).Send(map[string]interface{}{
-		"address": address,
-		"amount":  amount,
-		"network": "dash",
-		"api_key": os.Getenv("COINTEXT_API_KEY"),
-	}).End()
+		_, body, errs := gorequest.New().Post(url).Send(map[string]interface{}{
+			"address": address,
+			"amount":  amount,
+			"network": "dash",
+			"api_key": os.Getenv("COINTEXT_API_KEY"),
+		}).End()
 
-	if len(errs) > 1 {
-		broadcastErr(errs[0])
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create CoinText invoice")
-	}
+		if len(errs) > 1 {
+			broadcastErr(errs[0])
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create CoinText invoice")
+		}
 
-	paymentId := gjson.Get(body, "paymentId").String()
-	if paymentId == "" {
-		err := echo.NewHTTPError(http.StatusInternalServerError, "Failed to determine CoinText paymentId")
-		broadcastErr(err)
-		return err
-	}
+		paymentId := gjson.Get(body, "paymentId").String()
+		if paymentId == "" {
+			err := echo.NewHTTPError(http.StatusInternalServerError, "Failed to determine CoinText paymentId")
+			broadcastErr(err)
+			return err
+		}
 	*/
 
 	url := "https://api.get-spark.com/invoice"
@@ -292,7 +292,7 @@ func (p *providers) CryptocompareBTCDASHAverage() (rate float64, err error) {
 		fmt.Println("Recaching CryptocompareBTCDASHAverage")
 		rsp, body, errs := gorequest.New().
 			Get(url).
-			Retry(3, 5 * time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
+			Retry(3, 5*time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
 			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
@@ -319,7 +319,7 @@ func (p *providers) PoloniexBTCDASHAverage() (rate float64, err error) {
 		fmt.Println("Recaching PoloniexBTCDASHAverage")
 		rsp, body, errs := gorequest.New().
 			Get(url).
-			Retry(3, 5 * time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
+			Retry(3, 5*time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
 			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
@@ -353,7 +353,7 @@ func (p *providers) BitcoinaverageCurrentBTCDASHRate() (rate float64, err error)
 		fmt.Println("Recaching BitcoinaverageCurrentBTCDASHRate")
 		rsp, body, errs := gorequest.New().
 			Get(url).
-			Retry(3, 5 * time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
+			Retry(3, 5*time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
 			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
@@ -381,7 +381,7 @@ func (p *providers) BitcoinaverageRates() (rates map[string]float64, err error) 
 		rates = make(map[string]float64)
 		rsp, body, errs := gorequest.New().
 			Get(url).
-			Retry(3, 5 * time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
+			Retry(3, 5*time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
 			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
@@ -413,7 +413,7 @@ func (p *providers) DashCasaDASHVESRate() (rate float64, err error) {
 		fmt.Println("Recaching DashCasaDASHVESRate")
 		rsp, body, errs := gorequest.New().
 			Get(url).
-			Retry(3, 5 * time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
+			Retry(3, 5*time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
 			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
