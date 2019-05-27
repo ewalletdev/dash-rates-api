@@ -20,6 +20,8 @@ import (
 )
 
 var cacheDuration = time.Second * 90
+var defaultBackoff = time.Second * 30
+var maxBackoff = time.Hour
 
 func main() {
 	e := echo.New()
@@ -104,7 +106,7 @@ func (r *router) Poloniex(c echo.Context) error {
 
 // The current BTC/DASH rate from bitcoinaverage.
 func (r *router) BTCAverage(c echo.Context) error {
-	rate, err := r.providers.BitcoinaverageCurrentBTCDASHRate()
+	rate, err := r.providers.BitcoinaverageCurrentBTCDASHRate(defaultBackoff)
 	if err != nil {
 		return err
 	}
@@ -242,7 +244,7 @@ func (r *router) Wildcard(c echo.Context) error {
 		selectedCurrencies = supportedCurrencies
 	}
 
-	btcRates, err := r.providers.BitcoinaverageRates()
+	btcRates, err := r.providers.BitcoinaverageRates(defaultBackoff)
 	if err != nil {
 		return err
 	}
@@ -253,7 +255,7 @@ func (r *router) Wildcard(c echo.Context) error {
 	}
 
 	if btcDashRate == 0 {
-		btcDashRate, err = r.providers.BitcoinaverageCurrentBTCDASHRate()
+		btcDashRate, err = r.providers.BitcoinaverageCurrentBTCDASHRate(defaultBackoff)
 		if err != nil {
 			return err
 		}
@@ -346,7 +348,7 @@ func (p *providers) PoloniexBTCDASHAverage() (rate float64, err error) {
 	return
 }
 
-func (p *providers) BitcoinaverageCurrentBTCDASHRate() (rate float64, err error) {
+func (p *providers) BitcoinaverageCurrentBTCDASHRate(backoff time.Duration) (rate float64, err error) {
 	url := "https://apiv2.bitcoinaverage.com/indices/crypto/ticker/DASHBTC"
 	rateI, found := p.cache.Get(url)
 	if !found {
@@ -359,6 +361,13 @@ func (p *providers) BitcoinaverageCurrentBTCDASHRate() (rate float64, err error)
 			broadcastErr(errs[0])
 			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch BTCDASH rate from BitcoinAverage")
 			return
+		}
+		if rsp.StatusCode == http.StatusTooManyRequests {
+			nextBackoff := time.Duration(float64(backoff.Nanoseconds()) * 1.3)
+			if nextBackoff > maxBackoff {
+				nextBackoff = maxBackoff
+			}
+			return p.BitcoinaverageCurrentBTCDASHRate(nextBackoff)
 		}
 		if rsp.StatusCode != http.StatusOK {
 			err = echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("BitcoinAverage BTCDASH returned bad status code: %d", rsp.StatusCode))
@@ -373,7 +382,7 @@ func (p *providers) BitcoinaverageCurrentBTCDASHRate() (rate float64, err error)
 	return
 }
 
-func (p *providers) BitcoinaverageRates() (rates map[string]float64, err error) {
+func (p *providers) BitcoinaverageRates(backoff time.Duration) (rates map[string]float64, err error) {
 	url := "https://apiv2.bitcoinaverage.com/indices/global/ticker/short?crypto=BTC"
 	ratesI, found := p.cache.Get(url)
 	if !found {
@@ -387,6 +396,13 @@ func (p *providers) BitcoinaverageRates() (rates map[string]float64, err error) 
 			broadcastErr(errs[0])
 			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch rates from BitcoinAverage")
 			return
+		}
+		if rsp.StatusCode == http.StatusTooManyRequests {
+			nextBackoff := time.Duration(float64(backoff.Nanoseconds()) * 1.3)
+			if nextBackoff > maxBackoff {
+				nextBackoff = maxBackoff
+			}
+			return p.BitcoinaverageRates(nextBackoff)
 		}
 		if rsp.StatusCode != http.StatusOK {
 			err = echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("BitcoinAverage returned bad status code: %d", rsp.StatusCode))
