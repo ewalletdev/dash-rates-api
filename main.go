@@ -265,7 +265,12 @@ func (r *router) Wildcard(c echo.Context) error {
 
 	for _, currency := range selectedCurrencies {
 		if currency == "VES" {
-			rates["VES"], err = r.providers.DashCasaDASHVESRate()
+			btcVesRate, err := r.providers.LocalbitcoinsBTCVESRate()
+			if err != nil {
+				return err
+			}
+			dashVesRate := btcDashRate * btcVesRate
+			rates["VES"] = dashVesRate
 			if err != nil {
 				return err
 			}
@@ -422,26 +427,28 @@ func (p *providers) BitcoinaverageRates(backoff time.Duration) (rates map[string
 	return
 }
 
-func (p *providers) DashCasaDASHVESRate() (rate float64, err error) {
-	url := "http://dash.casa/api/?cur=VES"
+func (p *providers) LocalbitcoinsBTCVESRate() (rate float64, err error) {
+	url := "https://localbitcoins.com/bitcoinaverage/ticker-all-currencies/"
 	rateI, found := p.cache.Get(url)
+
 	if !found {
-		fmt.Println("Recaching DashCasaDASHVESRate")
+		fmt.Println("Recaching LocalbitcoinsBTCVESRate")
 		rsp, body, errs := gorequest.New().
 			Get(url).
 			Retry(3, 5*time.Second, http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable).
 			End()
 		if len(errs) > 1 {
 			broadcastErr(errs[0])
-			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch DASHVES rate from Dash Casa")
+			err = echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch BTCVES rate from Localbitcoins")
 			return
 		}
 		if rsp.StatusCode != http.StatusOK {
-			err = echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Dash Casa returned bad status code: %d", rsp.StatusCode))
+			err = echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Localbitcoins returned bad status code: %d", rsp.StatusCode))
 			broadcastErr(err)
 			return
 		}
-		rate = gjson.Get(body, "dashrate").Float()
+		rate = gjson.Get(body, "VES.rates.last").Float()
+		fmt.Println("LAST", rate)
 		p.cache.SetDefault(url, rate)
 	} else {
 		rate, _ = rateI.(float64)
